@@ -1,163 +1,157 @@
 # BareNet
 
-BareNet is a local-first, privacy-focused network reconnaissance and discovery tool designed for cybersecurity research and defensive analysis. The project aims to provide large-scale URL and service discovery without relying on centralized servers, external APIs, or cloud-based infrastructure.
+> **BareNet** é um navegador / motor de busca em modo texto (CLI/TUI) orientado à **análise passiva de sinais de segurança**, projetado para identificar e navegar apenas por páginas que apresentem **indícios técnicos de fragilidade** (misconfigurações, exposições acidentais, ausência de boas práticas), sem realizar qualquer forma de exploração ativa.
 
-Unlike traditional scanners or OSINT platforms, BareNet is designed to run entirely on the user's machine, giving full control over data sources, filtering logic, and execution flow.
-
----
-
-## Key Features
-
-* Local-first execution (no external servers required)
-* Modular search engine architecture
-* Pluggable filters for protocol and security properties
-* Designed for large-scale URL and endpoint discovery
-* Suitable for research, blue team analysis, and controlled lab environments
-* CLI-oriented and scriptable
+Este documento descreve **o objetivo do projeto, suas características principais e a arquitetura adotada**. O BareNet encontra-se em **estágio de prototipagem**, com foco em clareza arquitetural, modularidade e segurança por padrão.
 
 ---
 
-## Project Philosophy
+## Objetivo do Projeto
 
-BareNet is built around a simple principle:
+O BareNet tem como objetivo permitir que pesquisadores e estudantes de segurança:
 
-> If you want to reduce noise, fingerprints, and external dependency risks, you must control the entire pipeline.
+* Naveguem na web **a partir do terminal**
+* Realizem buscas por termos comuns (ex.: "login", "admin", "páscoa")
+* Visualizem **apenas páginas que apresentem algum sinal técnico relevante**
+* Inspecionem conteúdo HTML de forma **segura, passiva e sanitizada**
 
-The tool avoids reliance on third-party SaaS platforms, indexed search engines, or telemetry-heavy tooling. All discovery logic runs locally, making it suitable for air-gapped environments, controlled networks, and forensic research.
-
----
-
-## Architecture Overview
-
-BareNet follows a modular and extensible design:
-
-* **CLI Layer** – Argument parsing and user interaction
-* **Search Engines** – Multiple discovery backends (file-based, search-based, etc.)
-* **Filters** – Post-processing modules to refine results
-* **HTTP Client** – Lightweight networking abstraction
-* **Cache Layer** – Optional local caching to reduce repeated requests
-
-Each component can be extended independently.
+O projeto **não executa ataques**, não realiza exploração ativa e não envia payloads maliciosos. Ele funciona como um **filtro de visibilidade técnica** sobre a web.
 
 ---
 
-## Directory Structure
+## Princípios Fundamentais
+
+* **Passividade absoluta**: nenhuma ação invasiva é executada
+* **Safe by default**: JS nunca é executado; submissões são bloqueadas
+* **Separação de responsabilidades**: UI, engine, detecção e renderização isolados
+* **Extensibilidade**: novos sinais, fontes e renderizadores podem ser adicionados como plugins
+* **Persistência local**: dados armazenados localmente para análise e auditoria
+
+---
+
+## O que o BareNet é (e não é)
+
+### É
+
+* Um navegador CLI/TUI
+* Um motor de busca orientado a sinais
+* Uma ferramenta de estudo e observação
+* Um indexador passivo de páginas públicas
+
+### Não é
+
+* Um scanner ativo
+* Um fuzzer
+* Uma ferramenta de exploração
+* Um substituto de navegador tradicional
+
+---
+
+## Arquitetura Geral
+
+O fluxo principal do BareNet segue o modelo:
+
+```
+Usuário → UI (Textual) → Engine
+                      → Searcher
+                      → Signals
+                      → Storage
+                      → Renderer (on-demand)
+```
+
+Cada camada possui responsabilidades bem definidas e não acessa camadas inferiores diretamente.
+
+---
+
+## Estrutura de Diretórios
 
 ```
 barenet/
-├── __init__.py
-├── __main__.py
-├── cli.py            # Command-line interface
-├── config.py         # Global configuration
-├── httpclient.py     # HTTP request abstraction
-├── cache.py          # Local cache handling
-├── browser.py        # Network interaction logic
-├── utils.py          # Shared utilities
-├── search/           # Search engine modules
-│   ├── base.py
-│   ├── duckduckgo.py
-│   └── localfile.py
-├── filters/          # Result filtering modules
-│   ├── base.py
-│   ├── http_only.py
-│   └── no_hsts.py
-examples/
-└── urls.txt
+├── __main__.py           # bootstrap + inicialização
+├── bootstrap.py          # verificação de dependências de runtime
+├── cli.py                # entrada CLI
+├── engine.py             # orquestração do fluxo
+├── httpclient.py         # cliente HTTP passivo
+├── indexer.py            # descoberta de páginas
+├── parser/               # parsers de HTML e TLS
+├── signals/              # detectores de sinais (plug-and-play)
+├── signals_registry.py   # registro automático de detectores
+├── db/                   # persistência (SQLite + FTS5)
+├── cache.py              # cache local de conteúdo
+├── searcher.py           # consultas, ranking e filtros
+├── inspect.py            # inspeção HTML sanitizada
+├── renderers/            # renderização externa (ex.: w3m)
+├── plugins/              # fontes de descoberta
+├── ui/                   # interface TUI
+├── exporters.py          # exportação de dados
+├── tools/                # utilitários de desenvolvimento
+├── docs/                 # documentação
+└── README.md
 ```
 
 ---
 
-## Installation
+## Camadas Principais
 
-BareNet currently requires Python 3.10 or newer.
+### UI (Textual)
 
-```bash
-git clone https://github.com/yourusername/barenet.git
-cd barenet
-pip install -r requirements.txt
-```
+* Interface interativa no terminal
+* Campo de busca, lista de resultados e painel lateral
+* Navegação por teclado
 
----
+### Engine
 
-## Usage
+* Coordena o fluxo de busca, análise e apresentação
+* Aplica filtros selecionados pelo usuário
 
-Run BareNet as a Python module:
+### Signals
 
-```bash
-python -m barenet [options]
-```
+* Detectores independentes
+* Cada arquivo representa um sinal técnico
+* Exemplo: HTTP sem TLS, headers ausentes, mensagens de erro
 
-Example (local file discovery):
+### Storage
 
-```bash
-python -m barenet --source localfile --input examples/urls.txt
-```
+* Banco de dados local SQLite
+* Full-text search (FTS5)
+* Persistência para histórico e auditoria
 
-Filters can be chained to refine results:
+### Renderer
 
-```bash
-python -m barenet --source localfile --filter http_only --filter no_hsts
-```
+* Renderização HTML sob demanda
+* `w3m` utilizado apenas quando o usuário solicita visualização
 
 ---
 
-## Search Engines
+## Segurança por Design
 
-Search engines define how endpoints are discovered. Each engine implements a common interface and can be enabled or disabled independently.
-
-Current engines:
-
-* **localfile** – Reads URLs from local files
-* **duckduckgo** – Uses public search results (optional, controlled)
+* Nenhum JavaScript é executado
+* HTML é sanitizado antes da renderização
+* Limites rígidos de tamanho e tempo
+* Respeito a políticas de uso local
 
 ---
 
-## Filters
+## Estado Atual do Projeto
 
-Filters are applied after discovery to refine results based on protocol, headers, or security properties.
+* Estrutura arquitetural definida
+* Interfaces em definição
+* UI e engine em fase inicial
+* Detectores básicos planejados
 
-Examples:
-
-* `http_only` – Keeps only HTTP endpoints
-* `no_hsts` – Excludes endpoints enforcing HSTS
-
----
-
-## Use Cases
-
-* Network surface mapping
-* Service exposure analysis
-* Security research and experimentation
-* Blue team reconnaissance
-* Academic and lab-based studies
+Este README serve como **guia de arquitetura** e **referência conceitual** durante a fase de prototipagem.
 
 ---
 
-## Security & Ethics
+## Próximos Passos
 
-BareNet is intended for **defensive security research**, controlled environments, and systems you own or are explicitly authorized to test.
-
-Unauthorized scanning or reconnaissance of third-party systems may be illegal and unethical.
-
----
-
-## Roadmap
-
-* Additional local discovery engines
-* Advanced protocol fingerprinting
-* Improved caching strategies
-* Export formats (JSON, CSV)
-* Plugin system for third-party modules
+* Implementar interfaces base (Signal, Storage, Renderer)
+* Criar UI mínima funcional
+* Adicionar primeiros detectores passivos
+* Documentar contratos internos
 
 ---
 
-## License
+## Licença
 
-This project is released under the MIT License.
-
----
-
-## Disclaimer
-
-This tool is provided "as is" without warranty of any kind. The authors are not responsible for misuse or damages resulting from its use.
-
+A definir.
