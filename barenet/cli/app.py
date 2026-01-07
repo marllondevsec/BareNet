@@ -16,12 +16,6 @@ ASCII_LOGO = r"""
 """
 
 class BareNetCLI:
-    """
-    CLI visual usando rich.
-    Construa com: cli = BareNetCLI(engine)
-    engine precisa expor: open_url(url: str) -> dict (contrato abaixo)
-    """
-
     def __init__(self, engine):
         self.engine = engine
         self.console = Console()
@@ -40,7 +34,10 @@ class BareNetCLI:
         self.console.print(header)
 
     def _render_footer(self):
-        hint = Text("Digite uma URL (https://...) ou um termo de busca. 'q' para sair.", style="dim")
+        hint = Text(
+            "Digite uma URL (https://...) ou um termo de busca. ':filters' para gerenciar filtros. 'q' para sair.",
+            style="dim",
+        )
         self.console.print(Panel(hint, padding=(0,1), box=ROUNDED))
 
     def _show_result(self, result: dict):
@@ -54,7 +51,6 @@ class BareNetCLI:
         md.append(f"Content-Type: {result.get('content_type')}\n")
         md.append(f"Tamanho: {result.get('size')} bytes\n")
         if result.get("context_date"):
-            # context_date pode ser datetime ou string, lidamos com ambos
             cd = result["context_date"]
             try:
                 md.append(f"Data de contexto: {cd.date()}\n")
@@ -66,11 +62,57 @@ class BareNetCLI:
         if result.get("findings"):
             md.append("\n\nAchados:\n", style="bold red")
             for f in result["findings"]:
-                # espera-se que cada finding seja um dict com name/description (convenção)
                 name = f.get("name", "<filter>")
                 desc = f.get("description", "")
                 md.append(f"- {name}: {desc}\n")
         self.console.print(Panel(md, title="Resultado", box=ROUNDED))
+
+    def _manage_filters(self):
+        """Modo interativo simples para listar/toggle filters."""
+        while True:
+            items = self.engine.list_available_signals()
+            if not items:
+                self.console.print(Panel("Nenhum filtro encontrado em barenet.plugins.signals", title="Filtros"))
+                self.console.input("Enter para voltar...")
+                return
+
+            lines = []
+            for i, it in enumerate(items, start=1):
+                status = "[x]" if it["enabled"] else "[ ]"
+                lines.append(f"{i:2d}. {status} {it['name']} - {it['description']}")
+            self.console.print(Panel("\n".join(lines), title="Filtros disponíveis"))
+            self.console.print("Digite número para alternar, 'a' ativa todos, 'd' desativa todos, Enter volta.")
+            choice = self.console.input("filters> ").strip()
+            if choice == "":
+                return
+            if choice.lower() == "a":
+                for it in items:
+                    if not it["enabled"]:
+                        try:
+                            self.engine.toggle_signal(it["name"])
+                        except Exception:
+                            pass
+                continue
+            if choice.lower() == "d":
+                for it in items:
+                    if it["enabled"]:
+                        try:
+                            self.engine.toggle_signal(it["name"])
+                        except Exception:
+                            pass
+                continue
+            parts = [p.strip() for p in choice.split(",") if p.strip()]
+            for p in parts:
+                if not p.isdigit():
+                    continue
+                idx = int(p) - 1
+                if 0 <= idx < len(items):
+                    name = items[idx]["name"]
+                    try:
+                        new_state = self.engine.toggle_signal(name)
+                        self.console.print(f"{name} -> {'enabled' if new_state else 'disabled'}")
+                    except Exception as e:
+                        self.console.print(f"Erro: {e}")
 
     def run(self):
         while True:
@@ -91,7 +133,10 @@ class BareNetCLI:
                 self.console.print("Saindo.")
                 return
 
-            # se parece URL -> abrir (engine)
+            if cmd in (":filters", "filters"):
+                self._manage_filters()
+                continue
+
             if cmd.startswith("http://") or cmd.startswith("https://"):
                 try:
                     result = self.engine.open_url(cmd)
@@ -104,6 +149,6 @@ class BareNetCLI:
                 self.console.input("Enter para continuar...")
                 continue
 
-            # caso contrário, tratar como pesquisa (stub por enquanto)
+            # pesquisa (stub)
             self.console.print(Panel(f"Pesquisa por: [bold]{cmd}[/bold]\n( ainda não implementada )", box=ROUNDED))
             self.console.input("Enter para continuar...")
